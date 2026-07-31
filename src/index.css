@@ -73,4 +73,5 @@ button {
 }
 .nav nav button{ margin-left:0.5rem }
 .row{ display:flex; gap:0.5rem }
-.active{ opacity:0.9 }
+
+.active{ background: #6486d6 }

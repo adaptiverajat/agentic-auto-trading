@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import ResearchAndAnalysis from './ResearchAndAnalysis';
+import RiskManager from './RiskManager';
 
 function App() {
   const [prompt, setPrompt] = useState('Buy 1 share of Reliance if the market is bullish today.');
@@ -116,6 +118,7 @@ function App() {
       await fetchLivePrice();
       setKiteConnectResult('Connected to Kite successfully');
       setResult('');
+      setTimeout(() => setScreen('research'), 1000);
     } catch (err) {
       setError(err.message || 'Unable to connect to Kite');
       setKiteConnectResult(`Connection failed: ${err.message || 'Unable to connect to Kite'}`);
@@ -158,7 +161,9 @@ function App() {
       <header className="nav">
         <h1>Agentic Auto Trading</h1>
         <nav>
-          <button onClick={() => setScreen('login')} className={screen==='login'? 'active':''}>Login</button>
+          <button onClick={() => setScreen('login')} className={screen==='login'? 'active':''}>Login</button> &nbsp;&gt;&gt;&nbsp;
+          <button onClick={() => setScreen('research')} className={screen==='research'? 'active':''}>Research</button> &nbsp;&gt;&gt;&nbsp;
+          <button onClick={() => setScreen('risk-manager')} className={screen==='risk-manager'? 'active':''}>Risk Manager</button> &nbsp;&gt;&gt;&nbsp;
           <button onClick={() => setScreen('trade')} className={screen==='trade'? 'active':''}>Trade</button>
           <button onClick={() => setScreen('portfolio')} className={screen==='portfolio'? 'active':''}>Portfolio</button>
         </nav>
@@ -214,27 +219,6 @@ function App() {
                 <button type="submit" disabled={loading}>{loading ? 'Thinking...' : 'Run Agent'}</button>
               </div>
             </form>
-
-            {debugPayload && (
-              <div className="panel">
-                <h3>Final trade endpoint URL</h3>
-                <pre className="result">{debugUrl}</pre>
-              </div>
-            )}
-            {debugPayload && (
-              <div className="panel">
-                <h3>Outgoing request payload</h3>
-                <pre className="result">{debugPayload}</pre>
-              </div>
-            )}
-            {debugResponse && (
-              <div className="panel">
-                <h3>Backend response JSON</h3>
-                <pre className="result">{debugResponse}</pre>
-              </div>
-            )}
-            {result && <pre className="result">{result}</pre>}
-            {error && <p className="error">{error}</p>}
           </div>
         )}
 
@@ -244,6 +228,13 @@ function App() {
             <p>Portfolio management dashboard (placeholder).</p>
             <p>Holdings, P&L and recent orders will appear here.</p>
           </div>
+        )}
+
+        {screen === 'research' && (
+          <ResearchAndAnalysis setScreen={setScreen} />
+        )}
+        {screen === 'risk-manager' && (
+          <RiskManager setScreen={setScreen} />
         )}
       </main>
     </div>
