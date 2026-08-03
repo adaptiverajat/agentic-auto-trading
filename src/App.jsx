@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import ResearchAndAnalysis from './ResearchAndAnalysis';
 import RiskManager from './RiskManager';
+import Trade from './Trade';
 
 function App() {
   const [prompt, setPrompt] = useState('Buy 1 share of Reliance if the market is bullish today.');
@@ -18,6 +19,16 @@ function App() {
   const [kiteForm, setKiteForm] = useState({
     requestToken: '',
     accessToken: ''
+  });
+  const [recommendedStocks, setRecommendedStocks] = useState([]);
+  const [userProfile, setUserProfile] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const rawValue = window.localStorage.getItem('agentic-auto-trading-user-profile');
+      return rawValue ? JSON.parse(rawValue) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [screen, setScreen] = useState('login'); // login | trade | portfolio
@@ -70,6 +81,15 @@ function App() {
 
     init();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (userProfile) {
+      window.localStorage.setItem('agentic-auto-trading-user-profile', JSON.stringify(userProfile));
+    } else {
+      window.localStorage.removeItem('agentic-auto-trading-user-profile');
+    }
+  }, [userProfile]);
 
   useEffect(() => {
     const handleMessage = (event) => {
@@ -156,6 +176,14 @@ function App() {
     }
   };
 
+  const handleRecommendationsReady = (items) => {
+    setRecommendedStocks(items || []);
+  };
+
+  const handleProfileSave = (profile) => {
+    setUserProfile(profile);
+  };
+
   return (
     <div className="app">
       <header className="nav">
@@ -191,35 +219,7 @@ function App() {
         )}
 
         {screen === 'trade' && (
-          <div>
-            <form onSubmit={handleSubmit} className="stack">
-              <textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-              <div className="panel">
-                <h3>Order price</h3>
-                <label htmlFor="price-input">Enter a limit price (leave blank to use the live quote)</label>
-                <input
-                  id="price-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="Limit price (0 allowed)"
-                />
-                {quoteError ? (
-                  <p className="error"><strong>Live quote:</strong> {quoteError}</p>
-                ) : livePrice ? (
-                  <p><strong>Live quote:</strong> {livePrice}</p>
-                ) : (
-                  <p><strong>Live quote:</strong> {kiteStatus === 'Connected to Kite' ? 'Loading...' : 'Connect Kite to see live quote'}</p>
-                )}
-                <p><strong>Current order price:</strong> {price || 'Not set'}</p>
-              </div>
-              <div className="row">
-                <button type="submit" disabled={loading}>{loading ? 'Thinking...' : 'Run Agent'}</button>
-              </div>
-            </form>
-          </div>
+          <Trade recommendations={recommendedStocks} />
         )}
 
         {screen === 'portfolio' && (
@@ -231,10 +231,15 @@ function App() {
         )}
 
         {screen === 'research' && (
-          <ResearchAndAnalysis setScreen={setScreen} />
+          <ResearchAndAnalysis setScreen={setScreen} onRecommendationsReady={handleRecommendationsReady} />
         )}
         {screen === 'risk-manager' && (
-          <RiskManager setScreen={setScreen} />
+          <RiskManager
+            setScreen={setScreen}
+            recommendations={recommendedStocks}
+            profile={userProfile}
+            onProfileSave={handleProfileSave}
+          />
         )}
       </main>
     </div>

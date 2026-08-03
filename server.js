@@ -35,6 +35,125 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/research', async (req, res) => {
+  const prompt = String(req.body?.prompt || 'Analyse the Indian market for the next 5 sessions and recommend 5 high-conviction stocks.').trim();
+  const marketScope = String(req.body?.marketScope || 'India').trim();
+  const horizon = String(req.body?.horizon || '1-10 day').trim();
+
+  try {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey) {
+      return res.json(buildFallbackResearchReport(prompt, marketScope, horizon));
+    }
+
+    const client = new OpenAI({ apiKey });
+    const response = await client.responses.create({
+      model: 'gpt-4.1-mini',
+      input: [
+        {
+          role: 'system',
+          content: `You are an expert Indian market research analyst. Produce a structured JSON object only. Use a layered research methodology with a quantitative screening layer and a fundamental validation layer. The JSON must contain these exact fields:
+{
+  "summary": string,
+  "researchLog": [{"step": string, "message": string, "evidence": string}],
+  "recommendations": [{"ticker": string, "rank": number, "score": number, "confidence": string, "rationale": string, "evidence": [string]}],
+  "topStocks": [{"ticker": string, "sector": string, "score": number, "marketCap": string, "pe": number, "peg": number, "fcfYield": number, "momentum": number, "fundFlow": string, "analystConsensus": string, "riskAssessment": string}]
+}
+Rules:
+- Create exactly 5 recommendations.
+- Create 100 topStocks entries.
+- Use real Indian equity tickers such as RELIANCE, TCS, HDFCBANK, INFY, ICICIBANK, SBI, LT, HINDUNILVR, ASIANPAINTS, BHARTIARTL, KOTAKBANK, AXISBANK, ITC, MARUTI, BAJAJFINANCE, SUNPHARMA, DRREDDY, ONGC, NTPC, TITAN, M&M, ULTRACEMCO, INDUSINDBK, WIPRO, CIPLA, PFC, COALINDIA, EICHERMOT, POWERGRID, NESTLEIND, HCLTECH, ZOMATO, BEL, ADANIPORTS, JSWSTEEL, TATAMOTORS, LUPIN, APLAPOLLO, TATASTEEL, GAIL, SBILIFE, GODREJCP, HDFCLIFE, TATACONSUM, PNB, PIDILITIND, HAVELLS, DABUR, GRANULES, IRCTC, BALKRISIND, INDIGO, MRF, PAGEIND, SHREECEM, DIVISLAB, ICICIPRULI, BANDHANBNK, CHOLAFIN, TATACHEM, METROPOLIS, MUTHOOTFIN, LAURUSLABS, COLPAL, CONCOR, POLYCAB, CANBK, OFSS, PERSISTENT, MPHASIS, KPITTECH, MAZDOCK, AARTIIND, LTI, CHEMPLAST, VEDL, NMDC, BIOCON, TORNTPOWER, CASTROLIND, HPCL, IGL, GICRE, AUROPHARMA, ACC, AMBUJACEM, INDHOTEL, SRF, VOLTAS, UPL, PFIZER, TTKPRESTIG, SRTRANSFIN, APOLLOHOSP, ASTRAL, LALPATHLAB, REC, BHEL, IDEA, JUBLFOOD, YESBANK.
+- Use plausible numeric metrics.
+- Keep the response concise yet detailed enough for an analyst UI.
+- The researchLog should read like a chatbot transcript with step-by-step evidence.
+- Do not add any text outside the JSON object.`
+        },
+        {
+          role: 'user',
+          content: `Market: ${marketScope}\nHorizon: ${horizon}\nFocus: ${prompt}`
+        }
+      ]
+    });
+
+    const parsed = parseJsonPayload(response.output_text);
+    if (!parsed || !Array.isArray(parsed.recommendations) || !Array.isArray(parsed.topStocks)) {
+      return res.json(buildFallbackResearchReport(prompt, marketScope, horizon));
+    }
+
+    return res.json({
+      ...parsed,
+      generatedBy: 'openai',
+      model: 'gpt-4.1-mini'
+    });
+  } catch (error) {
+    console.error('Research endpoint failed:', error);
+    const fallback = buildFallbackResearchReport(prompt, marketScope, horizon);
+    return res.json({
+      ...fallback,
+      error: 'Unable to generate research report right now.',
+      generatedBy: 'fallback',
+      model: 'local-demo'
+    });
+  }
+});
+
+app.post('/api/risk-manager', async (req, res) => {
+  const { profile, recommendations = [] } = req.body || {};
+
+  try {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey) {
+      return res.json(buildFallbackRiskReport(profile, recommendations));
+    }
+
+    const client = new OpenAI({ apiKey });
+    const response = await client.responses.create({
+      model: 'gpt-4.1-mini',
+      input: [
+        {
+          role: 'system',
+          content: `You are an expert risk manager and portfolio planner. Produce a single JSON object only. Use the investor profile and the top-stock recommendations to create a risk-adjusted ranking. Return this exact structure:
+{
+  "summary": string,
+  "researchLog": [{"step": string, "message": string, "evidence": string}],
+  "topThree": [{"ticker": string, "rank": number, "verdictTag": "Buy-Watch"|"Scale-In"|"Hold"|"Trim"|"Avoid", "dominantVariable": string, "valuationRange": string, "entryPlan": {"entry": string, "support": string, "resistance": string}, "invalidationConditions": [string], "rationale": string, "riskFit": string, "safeguards": [string]}],
+  "verdictLegend": [{"tag": string, "meaning": string}]
+}
+Rules:
+- Create exactly 3 topThree entries.
+- Use the same tickers from the incoming recommendations when possible.
+- Tailor the verdict to the investor profile: conservative investors should avoid overly volatile picks, long-term investors should prefer months-based setups, and sector concentration should be avoided.
+- Keep the tone practical and evidence-based.
+- Do not add any text outside the JSON object.`
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({ profile, recommendations })
+        }
+      ]
+    });
+
+    const parsed = parseJsonPayload(response.output_text);
+    if (!parsed || !Array.isArray(parsed.topThree)) {
+      return res.json(buildFallbackRiskReport(profile, recommendations));
+    }
+
+    return res.json({
+      ...parsed,
+      generatedBy: 'openai',
+      model: 'gpt-4.1-mini'
+    });
+  } catch (error) {
+    console.error('Risk manager endpoint failed:', error);
+    return res.json({
+      ...buildFallbackRiskReport(profile, recommendations),
+      error: 'Unable to run risk manager analysis right now.',
+      generatedBy: 'fallback',
+      model: 'local-demo'
+    });
+  }
+});
+
 app.get('/api/kite/status', (_req, res) => {
   res.json({ connected: Boolean(kiteState.accessToken), apiKeyConfigured: Boolean(kiteState.apiKey) });
 });
@@ -233,6 +352,154 @@ function parseJsonPayload(rawText) {
     }
     return null;
   }
+}
+
+function buildFallbackRiskReport(profile, recommendations = []) {
+  const fallbackRecommendations = recommendations.length > 0 ? recommendations : [
+    { ticker: 'RELIANCE', score: 0.91, rationale: 'High quality and strong trend' },
+    { ticker: 'TCS', score: 0.88, rationale: 'Defensive quality and stable cash flow' },
+    { ticker: 'HDFCBANK', score: 0.84, rationale: 'Balanced banking exposure' }
+  ];
+
+  const profileSummary = profile ? `${profile.riskTolerance || 'moderate'} / ${profile.holdingPeriod || 'weeks'} / focus: ${profile.focusSectors || 'broad market'}` : 'No profile captured yet';
+
+  return {
+    summary: `Risk-adjusted screening completed for profile: ${profileSummary}. The final verdict favors names that match the user's risk profile and avoid concentration risk.`,
+    researchLog: [
+      {
+        step: 'Layer 3 - Risk-Adjusted Fit',
+        message: 'The model compared each stock against the investor profile to check volatility, holding horizon, sector concentration, and hard constraints.',
+        evidence: 'Conservative profiles were nudged away from high-volatility names and toward more resilient setups.'
+      },
+      {
+        step: 'Layer 4 - Final Verdict',
+        message: 'The top 3 names were assigned a clear action plan with entry zones, support and resistance, and invalidation levels.',
+        evidence: 'Every verdict includes a clear risk management framework and an explicit downside guardrail.'
+      }
+    ],
+    topThree: fallbackRecommendations.slice(0, 3).map((item, index) => ({
+      ticker: item.ticker,
+      rank: index + 1,
+      verdictTag: index === 0 ? 'Buy-Watch' : index === 1 ? 'Scale-In' : 'Hold',
+      dominantVariable: index === 0 ? 'Momentum and relative strength' : index === 1 ? 'Valuation support' : 'Quality and cash flow',
+      valuationRange: index === 0 ? 'Fair value band: 1,250-1,350' : index === 1 ? 'Fair value band: 3,700-3,900' : 'Fair value band: 1,600-1,700',
+      entryPlan: {
+        entry: index === 0 ? 'Entry near support zone' : 'Scale-in on pullbacks',
+        support: index === 0 ? '₹1,240' : '₹3,650',
+        resistance: index === 0 ? '₹1,320' : '₹3,900'
+      },
+      invalidationConditions: ['Break below support', 'Failed earnings confirmation', 'Sector rotation against the thesis'],
+      rationale: item.rationale || 'Balanced profile fit and strong ranking support.',
+      riskFit: profile?.riskTolerance === 'conservative' ? 'Suitable for a conservative profile with strict sizing' : 'Suitable for the current profile with moderate sizing',
+      safeguards: ['No guarantee of returns', 'Use position sizing to manage drawdown', 'Reassess on fundamental changes']
+    })),
+    verdictLegend: [
+      { tag: 'Buy-Watch', meaning: 'Strong setup — watch for an entry trigger' },
+      { tag: 'Scale-In', meaning: 'Begin building a position in tranches' },
+      { tag: 'Hold', meaning: 'Already good exposure, no action needed' },
+      { tag: 'Trim', meaning: 'Partial profit-taking warranted' },
+      { tag: 'Avoid', meaning: 'Risk/reward unfavorable right now' }
+    ],
+    generatedBy: 'fallback',
+    model: 'local-demo'
+  };
+}
+
+function buildFallbackResearchReport(prompt, marketScope, horizon) {
+  const seedTickers = [
+    'RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','SBI','LT','HINDUNILVR','ASIANPAINTS','BHARTIARTL','KOTAKBANK','AXISBANK','ITC','MARUTI','BAJAJFINANCE','SUNPHARMA','DRREDDY','ONGC','NTPC','TITAN','M&M','ULTRACEMCO','INDUSINDBK','WIPRO','CIPLA','PFC','COALINDIA','EICHERMOT','POWERGRID','NESTLEIND','HCLTECH','ZOMATO','BEL','ADANIPORTS','JSWSTEEL','TATAMOTORS','LUPIN','APLAPOLLO','TATASTEEL','GAIL','SBILIFE','GODREJCP','HDFCLIFE','TATACONSUM','PNB','PIDILITIND','HAVELLS','DABUR','GRANULES','IRCTC','BALKRISIND','INDIGO','MRF','PAGEIND','SHREECEM','DIVISLAB','ICICIPRULI','BANDHANBNK','CHOLAFIN','TATACHEM','METROPOLIS','MUTHOOTFIN','LAURUSLABS','COLPAL','CONCOR','POLYCAB','CANBK','OFSS','PERSISTENT','MPHASIS','KPITTECH','MAZDOCK','AARTIIND','LTI','CHEMPLAST','VEDL','NMDC','BIOCON','TORNTPOWER','CASTROLIND','HPCL','IGL','GICRE','AUROPHARMA','ACC','AMBUJACEM','INDHOTEL','SRF','VOLTAS','UPL','PFIZER','TTKPRESTIG','SRTRANSFIN','APOLLOHOSP','ASTRAL','LALPATHLAB','REC','BHEL','IDEA','JUBLFOOD','YESBANK'
+  ];
+
+  const sectors = ['Energy','IT','Banks','FMCG','Auto','Pharma','Infra','Consumer','Finance','Utilities'];
+  const topStocks = seedTickers.map((ticker, index) => ({
+    ticker,
+    sector: sectors[index % sectors.length],
+    score: Number((0.72 + (index % 17) * 0.012).toFixed(2)),
+    marketCap: `${(1.2 + index * 0.08).toFixed(1)}T`,
+    pe: 14 + (index % 9) + (index % 3) * 0.5,
+    peg: Number((0.9 + (index % 7) * 0.1).toFixed(2)),
+    fcfYield: Number((1.6 + (index % 6) * 0.4).toFixed(2)),
+    momentum: 55 + (index % 30),
+    fundFlow: index % 3 === 0 ? 'Positive' : index % 3 === 1 ? 'Neutral' : 'Constructive',
+    analystConsensus: index % 2 === 0 ? 'Buy' : 'Hold',
+    riskAssessment: index % 4 === 0 ? 'Moderate' : index % 4 === 1 ? 'Low' : 'Balanced'
+  }));
+
+  return {
+    summary: `A layered research scan for ${marketScope} over the ${horizon} horizon indicates that high-quality, high-liquidity names are leading the market. The shortlist blends quantitative edge with fundamental durability and is aligned to the focus prompt: ${prompt}`,
+    researchLog: [
+      {
+        step: 'Layer 1 - Quantitative Screening',
+        message: 'The model screened the universe for quality, flow behavior, and abnormal trading signals across 1-, 5-, and 10-day outlooks.',
+        evidence: 'Scorecards were generated for liquidity, momentum persistence, and structural quality before any stock-specific diagnosis began.'
+      },
+      {
+        step: 'Layer 1 - Candidate Shortlist',
+        message: 'The top-ranked names were selected as a quantitative shortlist rather than a buy recommendation.',
+        evidence: 'Only names that cleared the qualitative score threshold advanced to the validation stages.'
+      },
+      {
+        step: 'Layer 2 - Fundamental Validation',
+        message: 'Each candidate was checked for valuation, growth quality, profitability, leverage, and analyst support.',
+        evidence: 'Low-quality balance sheet names and overvalued risk clusters were pushed out of the final shortlist.'
+      },
+      {
+        step: 'Layer 2 - Technical and Flow Confirmation',
+        message: 'Trend health, support-resistance, and fund-flow signals were overlayed to identify the most resilient setups.',
+        evidence: 'The final ranking favors names with positive momentum and improving institutional participation.'
+      },
+      {
+        step: 'Recommendation Synthesis',
+        message: 'The final top five combines the strongest conviction from both layers and avoids overfitting to a single signal.',
+        evidence: 'The output reflects a balanced mixture of statistical edge and durable fundamentals.'
+      }
+    ],
+    recommendations: [
+      {
+        ticker: 'RELIANCE',
+        rank: 1,
+        score: 0.91,
+        confidence: 'High',
+        rationale: 'Strong quality, broad sector leadership, and improving relative momentum make it a core conviction pick.',
+        evidence: ['High structural quality', 'Positive fund-flow bias', 'Stable earnings profile']
+      },
+      {
+        ticker: 'TCS',
+        rank: 2,
+        score: 0.88,
+        confidence: 'High',
+        rationale: 'Defensive earnings quality and healthy cash generation support a resilient risk/reward profile.',
+        evidence: ['Low leverage', 'Strong free cash flow', 'Consistent analyst support']
+      },
+      {
+        ticker: 'HDFCBANK',
+        rank: 3,
+        score: 0.84,
+        confidence: 'Medium',
+        rationale: 'Balanced growth and prudent balance-sheet management make it attractive on pullbacks.',
+        evidence: ['Sound capital adequacy', 'Institutional participation', 'Relative strength']
+      },
+      {
+        ticker: 'INFY',
+        rank: 4,
+        score: 0.81,
+        confidence: 'Medium',
+        rationale: 'Improved sentiment and valuation comfort support an attractive tactical setup.',
+        evidence: ['Stable profitability', 'Momentum recovery', 'Reasonable valuation']
+      },
+      {
+        ticker: 'ICICIBANK',
+        rank: 5,
+        score: 0.79,
+        confidence: 'Medium',
+        rationale: 'A constructive backdrop in financials and improving flow support the final ranking.',
+        evidence: ['Banking sector strength', 'Positive fund-flow signal', 'Improving trend']
+      }
+    ],
+    topStocks,
+    generatedBy: 'fallback',
+    model: 'local-demo'
+  };
 }
 
 async function getQuoteDetails(kite, symbolName) {
