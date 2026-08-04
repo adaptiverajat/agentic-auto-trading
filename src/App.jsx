@@ -21,6 +21,7 @@ function App() {
     accessToken: ''
   });
   const [recommendedStocks, setRecommendedStocks] = useState([]);
+  const [finalVerdictStocks, setFinalVerdictStocks] = useState([]);
   const [userProfile, setUserProfile] = useState(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -184,6 +185,12 @@ function App() {
     setUserProfile(profile);
   };
 
+  const handleFinalVerdictReady = (items) => {
+    setFinalVerdictStocks(items || []);
+  };
+
+  const tradeRecommendations = finalVerdictStocks.length > 0 ? finalVerdictStocks : recommendedStocks;
+
   return (
     <div className="app">
       <header className="nav">
@@ -219,7 +226,7 @@ function App() {
         )}
 
         {screen === 'trade' && (
-          <Trade recommendations={recommendedStocks} />
+          <Trade recommendations={tradeRecommendations} />
         )}
 
         {screen === 'portfolio' && (
@@ -239,6 +246,7 @@ function App() {
             recommendations={recommendedStocks}
             profile={userProfile}
             onProfileSave={handleProfileSave}
+            onFinalVerdictReady={handleFinalVerdictReady}
           />
         )}
       </main>

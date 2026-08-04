@@ -35,7 +35,7 @@ const buildFallbackRiskReport = (profile, recommendations = []) => {
   };
 };
 
-const RiskManager = ({ setScreen, recommendations = [], profile, onProfileSave }) => {
+const RiskManager = ({ setScreen, recommendations = [], profile, onProfileSave, onFinalVerdictReady }) => {
   const [formData, setFormData] = useState(profile || { riskTolerance: '', holdingPeriod: '', focusSectors: '', avoidSectors: '' });
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +55,24 @@ const RiskManager = ({ setScreen, recommendations = [], profile, onProfileSave }
     if (!profile || recommendations.length === 0 || analysis) return;
     void runRiskManager();
   }, [profile, recommendations.length]);
+
+  useEffect(() => {
+    if (!analysis?.topThree?.length) {
+      onFinalVerdictReady?.([]);
+      return;
+    }
+
+    const verdictRecommendations = analysis.topThree.map((item) => ({
+      ticker: item.ticker,
+      rank: item.rank,
+      score: 0.9 - (item.rank - 1) * 0.03,
+      confidence: item.verdictTag === 'Buy-Watch' ? 'High' : item.verdictTag === 'Scale-In' ? 'Medium' : 'Medium',
+      rationale: item.rationale || 'Final verdict pick from risk manager.',
+      evidence: [item.dominantVariable, item.valuationRange, ...(item.safeguards || [])]
+    }));
+
+    onFinalVerdictReady?.(verdictRecommendations);
+  }, [analysis, onFinalVerdictReady]);
 
   const appendTimeline = (entry) => {
     setTimeline((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, ...entry }]);

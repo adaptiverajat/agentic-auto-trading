@@ -55,6 +55,7 @@ const ResearchAndAnalysis = ({ setScreen, onRecommendationsReady }) => {
   const [rawResponse, setRawResponse] = useState('');
   const [parsedResponse, setParsedResponse] = useState('');
   const [timeline, setTimeline] = useState([]);
+  const [isRetrying, setIsRetrying] = useState(false);
   const hasRunRef = useRef(false);
 
   const appendTimeline = (entry) => {
@@ -68,6 +69,7 @@ const ResearchAndAnalysis = ({ setScreen, onRecommendationsReady }) => {
     setRawResponse('');
     setParsedResponse('');
     setTimeline([]);
+    setIsRetrying(false);
 
     const payload = { prompt };
     setRequestPayload(JSON.stringify(payload, null, 2));
@@ -75,12 +77,24 @@ const ResearchAndAnalysis = ({ setScreen, onRecommendationsReady }) => {
 
     try {
       appendTimeline({ label: 'Sending request', detail: 'Waiting for backend response from the research endpoint.' });
+      const timeoutId = window.setTimeout(() => {
+        if (!document.hidden) {
+          appendTimeline({ label: 'Timeout fallback', detail: 'The backend did not respond in time, so the UI is switching to the local fallback report.' });
+          setRawResponse('(timeout)');
+          setParsedResponse(JSON.stringify(buildFallbackReport(prompt), null, 2));
+          setReport(buildFallbackReport(prompt));
+          setError('The backend did not respond in time. Showing the local fallback report instead.');
+          setLoading(false);
+        }
+      }, 8000);
+
       const res = await fetch('/api/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
+      window.clearTimeout(timeoutId);
       appendTimeline({ label: 'Response received', detail: `HTTP status: ${res.status} ${res.statusText}` });
       const rawText = await res.text();
       setRawResponse(rawText || '(empty response body)');
@@ -126,6 +140,7 @@ const ResearchAndAnalysis = ({ setScreen, onRecommendationsReady }) => {
       setError(err.message || 'Unable to generate research.');
     } finally {
       setLoading(false);
+      setIsRetrying(false);
     }
   };
 
@@ -170,6 +185,12 @@ const ResearchAndAnalysis = ({ setScreen, onRecommendationsReady }) => {
       <div className="panel">
         <h3>Backend Visibility Log</h3>
         <p>Every request and response is captured here so you can see the complete lifecycle of the research agent.</p>
+        <div className="row" style={{ marginBottom: '0.75rem' }}>
+          <button type="button" onClick={() => { setIsRetrying(true); void runResearch(); }} disabled={loading}>
+            {loading ? 'Running…' : 'Run research again'}
+          </button>
+          {isRetrying && <span>Retrying…</span>}
+        </div>
         <div className="verbose-grid">
           <div>
             <h4>Request payload</h4>

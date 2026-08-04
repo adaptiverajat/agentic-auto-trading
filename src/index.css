@@ -93,7 +93,7 @@ th, td{ padding: 0.55rem 0.5rem; border-bottom: 1px solid #e6eef6; text-align: l
 th{ background: #f2f7fc; }
 
 .verbose-grid{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.verbose-box, .timeline-box{ background: #0f172a; color: #f8fbff; padding: 0.9rem; border-radius: 8px; font-size: 0.9rem; white-space: pre-wrap; overflow-x: auto; min-height: 180px; }
+.verbose-box, .timeline-box{ background: #0f172a; color: #f8fbff; padding: 0.9rem; border-radius: 8px; font-size: 0.9rem; white-space: pre-wrap; overflow: auto; min-height: 180px; max-height: 180px; }
 .parsed-response-box{ max-height: 180px; overflow: auto; }
 .timeline-box{ display: flex; flex-direction: column; gap: 0.6rem; max-height: 180px; overflow: auto; }
 .timeline-item{ border-left: 3px solid #6486d6; padding-left: 0.7rem; }
